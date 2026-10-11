@@ -4,3 +4,4 @@ mlartifacts/
 __pycache__/
 .ipynb_checkpoints/
 mlflow.db
+*.png

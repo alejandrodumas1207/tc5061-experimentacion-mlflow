@@ -14,12 +14,13 @@ from sklearn.metrics import mean_absolute_error, root_mean_squared_error, r2_sco
 import mlflow
 import mlflow.sklearn
 
+
 def parse_args():
     """Lee los hiperparámetros desde la línea de comandos."""
     parser = argparse.ArgumentParser(description="Entrena un modelo Ridge para predecir precios de vivienda en Ames")
-    parser.add_argument('--alpha', type=float, default=1.0, help='Regularizacion de Ridge')
-    parser.add_argument('--num-strategy', type=str, default='median', choices=["median", "mean"], help='Estrategia de imputacion para variables numericas')
-    parser.add_argument('--max-area', type=int, default=4000, help='umbral de GrLivArea para eliminar outliers')
+    parser.add_argument('--alpha', type=float, default=1.0, help='Regularización de Ridge')
+    parser.add_argument('--num-strategy', type=str, default='median', choices=["median", "mean"], help='Estrategia de imputación para variables numéricas')
+    parser.add_argument('--max-area', type=int, default=4000, help='Umbral de GrLivArea para eliminar outliers')
     parser.add_argument('--test-size', type=float, default=0.2, help='Tamaño del conjunto de prueba')
     parser.add_argument('--random-state', type=int, default=42, help='Semilla para la reproducibilidad')
     return parser.parse_args()
@@ -27,9 +28,10 @@ def parse_args():
 
 def load_data():
     """Descarga el dataset Ames Housing desde OpenML."""
-    data = fetch_openml("house_prices",as_frame=True)
+    data = fetch_openml("house_prices", as_frame=True)
     df = data.frame
     return df
+
 
 def clean_data(df, max_area):
     """Limpia el dataset y elimina outliers según el umbral de área."""
@@ -39,17 +41,18 @@ def clean_data(df, max_area):
     df["MSSubClass"] = df["MSSubClass"].astype(str)
     #Columnas donde NA significa que la casa no tiene la característica
     sin_caracteristica = ["PoolQC", "MiscFeature", "Alley", "Fence", "FireplaceQu",
-                            "GarageType", "GarageFinish", "GarageQual", "GarageCond",
-                            "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2",
-                            "MasVnrType"]
+                          "GarageType", "GarageFinish", "GarageQual", "GarageCond",
+                          "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", "BsmtFinType2",
+                          "MasVnrType"]
     df[sin_caracteristica] = df[sin_caracteristica].fillna("Ninguno")
     #Sin revestimiento de mampostería, el área es cero
     df["MasVnrArea"] = df["MasVnrArea"].fillna(0)
     #GarageYrBlt repite la información de YearBuilt
     df = df.drop(columns="GarageYrBlt")
-    #Eliminamos ouliers de GrLivArea según el umbral definido
+    #Eliminamos outliers con GrLivArea mayor al umbral max_area
     df = df[df["GrLivArea"] <= max_area]
     return df
+
 
 def split_data(df, test_size, random_state):
     """Separa el dataset en conjunto de entrenamiento y prueba."""
@@ -63,8 +66,8 @@ def split_data(df, test_size, random_state):
 
 
 def build_model(X, alpha, num_strategy):
-    """Construye un pipeline de preprocesamiento y modelo Ridge.""" 
-    #Separamos columnas numéricas y categóricas para darles tratamiento distinto
+    """Construye un pipeline de preprocesamiento y modelo Ridge."""
+    #Separamos columnas numéricas y categóricas; tolist() permite serializar el modelo con skops
     num_cols = X.select_dtypes(include="number").columns.tolist()
     cat_cols = X.select_dtypes(exclude="number").columns.tolist()
 
@@ -94,8 +97,9 @@ def build_model(X, alpha, num_strategy):
 
     return modelo
 
-def evaluate_model(modelo, X_test, y_test):
-    """Evalúa el modelo en el conjunto de prueba y devuelve métricas."""
+
+def evaluate(modelo, X_test, y_test):
+    """Evalúa el modelo en el conjunto de prueba y devuelve métricas en dólares."""
     #Predicciones en escala logarítmica, convertidas de vuelta a dólares con expm1
     y_real = np.expm1(y_test)
     y_pred = np.expm1(modelo.predict(X_test))
@@ -106,12 +110,13 @@ def evaluate_model(modelo, X_test, y_test):
     }
     return metricas, y_real, y_pred
 
+
 def plot_predictions(y_real, y_pred, ruta="pred_vs_real.png"):
     """Genera un gráfico de dispersión de predicciones vs valores reales."""
     plt.scatter(y_real, y_pred, alpha=0.5)
     plt.plot([y_real.min(), y_real.max()], [y_real.min(), y_real.max()], 'r--', lw=2)
-    plt.xlabel("Precio real en dolares")
-    plt.ylabel("Precio predicho en dolares")
+    plt.xlabel("Precio real en dólares")
+    plt.ylabel("Precio predicho en dólares")
     plt.title("Predicciones vs Valores Reales")
     plt.savefig(ruta)
     plt.close()
@@ -119,12 +124,12 @@ def plot_predictions(y_real, y_pred, ruta="pred_vs_real.png"):
 
 
 def main():
-    """Entrena el modelo y registra el run en MLflow."""
+    """Entrena el modelo y registra la corrida en MLflow."""
     args = parse_args()
     # Guardamos el registro de experimentos en una base SQLite local
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
     mlflow.set_experiment("TC5061_Experimentacion_AmesHousing")
-    df =load_data()
+    df = load_data()
     df = clean_data(df, args.max_area)
     X_train, X_test, y_train, y_test = split_data(df, args.test_size, args.random_state)
     modelo = build_model(X_train, args.alpha, args.num_strategy)
@@ -134,7 +139,7 @@ def main():
 
         modelo.fit(X_train, y_train)
 
-        metricas, y_real, y_pred = evaluate_model(modelo, X_test, y_test)
+        metricas, y_real, y_pred = evaluate(modelo, X_test, y_test)
         mlflow.log_metrics(metricas)
         mlflow.log_metric("r2_train_log", modelo.score(X_train, y_train))
 
@@ -142,6 +147,7 @@ def main():
         mlflow.log_artifact(ruta)
 
         mlflow.sklearn.log_model(modelo, name="modelo", skops_trusted_types=["numpy.dtype"])
+
     print(metricas)
 
 
